@@ -2,20 +2,21 @@ package com.tarnovskiy.server;
 
 import com.tarnovskiy.server.DB.AuthService;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
 
 public class ClientHandler {
+    private final String PATH = "C:\\Users\\Maks-Oks\\Desktop\\geekbrains\\Lesson02\\logChat.txt";
+    private final String CENZYRA = "C:\\Users\\Maks-Oks\\Desktop\\geekbrains\\Lesson02\\cenzyra.txt";
     private Socket socket;
     private DataInputStream in;
     private DataOutputStream out;
     private ServerMain server;
     private String nick;
     private List<String> blackList;
+    private RandomAccessFile fileHandler ;
 
     public ClientHandler(ServerMain server, Socket socket) {
         try {
@@ -47,6 +48,7 @@ public class ClientHandler {
                         sendMsg("/authok");
                         nick = nickName;
                         server.subscribe(this);
+                        readlog100();
                         break;
                     } else {
                         sendMsg("Неверный логин/пароль");
@@ -58,10 +60,46 @@ public class ClientHandler {
         }
     }
 
+    private void readlog100() {
+        StringBuilder sb = new StringBuilder();
+        int line = 0;
+        try {
+            fileHandler  = new RandomAccessFile(PATH, "rw");
+            long fileLength = fileHandler.length() - 1;
+            for (long filePointer = fileLength; filePointer != -1 ; filePointer--) {
+                fileHandler.seek(filePointer);
+                int readByte = fileHandler.readByte();
+                if (readByte == 0xA) {
+                    if (filePointer < fileLength){
+                        line++;
+                    }
+                } else if (readByte == 0xD) {
+                    if (filePointer < fileLength - 1){
+                        line++;
+                    }
+                }
+                if (line >= 100){
+                    break;
+                }
+
+                sb.append((char) readByte);
+            }
+            String log100 = sb.reverse().toString();
+            server.broadcastMsg(this, log100);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }finally {
+            try {
+                fileHandler.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
     private void readClient() {
         try {
             while (true) {
-
                 String str = in.readUTF();
                 if (str.startsWith("/")) {
                     clearingChat(str);
@@ -69,8 +107,10 @@ public class ClientHandler {
                     sendPrivateMsg(str);
                     addBlackList(str);
                 } else {
-                    server.broadcastMsg(this, nick + ": " + str);
-                    System.out.println("Client: " + str);
+                    String s = cenzyra(str);
+                    server.broadcastMsg(this, nick + ": " + s);
+                    saveLog(nick + ": " + s);
+                    System.out.println("Client: " + s);
                 }
             }
         } catch (IOException e) {
@@ -116,6 +156,32 @@ public class ClientHandler {
         }
     }
 
+    private String cenzyra(String str) {
+        try {
+            fileHandler = new RandomAccessFile(CENZYRA, "rw");
+            StringBuilder sbCenzyra = new StringBuilder();
+            StringBuilder sbChat = new StringBuilder();
+            sbCenzyra.append(fileHandler.readLine());
+            String[] cenzyraWord = sbCenzyra.toString().split(" ");
+            String[] strBuf = str.split(" ");
+            for (int j = 0; j < strBuf.length; j++) {
+                for (int i = 0; i < cenzyraWord.length ; i++) {
+                    if(cenzyraWord[i].equals(strBuf[j])) {
+                        strBuf[j] = "***";
+                    }
+                }
+                if (j == strBuf.length - 1)
+                sbChat.append(strBuf[j]);
+                else
+                sbChat.append(strBuf[j] + " ");
+            }
+            str = sbChat.toString();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return str;
+    }
+
     private void cloasedServer(String str) {
         if (str.equals("/end")) {
             try {
@@ -127,6 +193,7 @@ public class ClientHandler {
     }
 
     private void closeInAndOutAndSocket() {
+
         try {
             in.close();
         } catch (IOException e) {
@@ -142,6 +209,21 @@ public class ClientHandler {
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+    private void saveLog(String log){
+
+        try {
+            fileHandler  = new RandomAccessFile(PATH, "rw");
+            long size = fileHandler .length();
+            fileHandler .seek(size);
+            if(size != 0)
+                fileHandler .writeBytes("\n" + log);
+            else fileHandler .writeBytes(log);
+                fileHandler .close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
     }
 
     public String getNick() {
